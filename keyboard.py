@@ -11,43 +11,46 @@ bart_model = BartForConditionalGeneration.from_pretrained('facebook/bart-large')
 # Define the number of top predictions to consider
 top_k = 10
 
-# Function to decode the predictions
-def decode(tokenizer, pred_idx, top_clean):
-    # Assuming pred_idx is a list of lists (each sublist contains top_k indices)
-    predictions = []
-    for indices in pred_idx:
-        tokens = [tokenizer.decode([idx], skip_special_tokens=True).strip() for idx in indices]
-        tokens = [token for token in tokens if token not in string.punctuation]  # Remove punctuation
-        predictions.append(tokens[:top_clean])
-    return predictions
+NUM_PREDICTION_BTNS = 6
 
-# Function to encode the input text
+def decode(tokenizer, pred_idx, top_clean):
+    ignore_tokens = string.punctuation + '[PAD]'
+    tokens = []
+    for w in pred_idx:
+        token = ''.join(tokenizer.decode(w).split())
+        if token not in ignore_tokens:
+            tokens.append(token.replace('##', ''))
+    return tokens[:top_clean]
+
+
 def encode(tokenizer, text_sentence, add_special_tokens=True):
     text_sentence = text_sentence.replace('<mask>', tokenizer.mask_token)
+    # if <mask> is the last token, append a "." so that models dont predict punctuation.
+    # adding ' .' changes predictions; try "what a"
     if tokenizer.mask_token == text_sentence.split()[-1]:
         text_sentence += ' .'
+
     input_ids = torch.tensor([tokenizer.encode(text_sentence, add_special_tokens=add_special_tokens)])
     mask_idx = torch.where(input_ids == tokenizer.mask_token_id)[1].tolist()[0]
     return input_ids, mask_idx
 
-# Function to get all predictions
+
 def get_all_predictions(text_sentence, top_clean=5):
-    try:
-        input_ids, mask_idx = encode(bart_tokenizer, text_sentence, add_special_tokens=True)
-        with torch.no_grad():
-            predict = bart_model(input_ids)[0]
-        # Get top k predictions for the masked token
-        top_preds = predict[0, mask_idx, :].topk(top_k).indices.tolist()
-        return decode(bart_tokenizer, [top_preds], top_clean)[0]
-    except Exception as e:
-        print(f"Error in model prediction: {e}")
-        return []
+    print(text_sentence)
+
+    input_ids, mask_idx = encode(bart_tokenizer, text_sentence, add_special_tokens=True)
+    with torch.no_grad():
+        predict = bart_model(input_ids)[0]
+    bart = decode(bart_tokenizer, predict[0, mask_idx, :].topk(top_k).indices.tolist(), top_clean)
+
+    return bart
 
 # Function to get model predictions
 def get_model_predictions(text):
     # Add a mask token at the end for prediction
-    masked_text = text + ' ' + bart_tokenizer.mask_token
-    predictions = get_all_predictions(masked_text, top_clean=5)
+    input_text = ' '.join(text.split())
+    input_text += ' <mask>'
+    predictions = get_all_predictions(input_text, NUM_PREDICTION_BTNS)
     return predictions
 
 # Function to handle button click
@@ -67,17 +70,15 @@ def on_key_press(char):
 
     # Update the CTkLabel's text to display in uppercase
     typed_text.configure(text=current_text)
-    update_predictions(current_text)
 
-# Function to update predictions
-def update_predictions(text):
-    predictions = get_model_predictions(text)
-    print("Predictions:", predictions)  # Add this line to check predictions
-    for i, prediction in enumerate(predictions):
-        if i < len(prediction_buttons):
-            prediction_buttons[i]["text"] = prediction
-        else:
-            break
+    if char == "space":
+        predictions = get_model_predictions(current_text)
+        print("Predictions:", '\n'.join(predictions))  # Add this line to check predictions
+        for i, prediction in enumerate(predictions):
+            if i < len(prediction_buttons):
+                prediction_buttons[i].configure(text = prediction)
+            else:
+                break
 
 # Function to close the application
 def close_application():
@@ -113,13 +114,10 @@ prediction_button_pady = 0    # Space between prediction buttons vertically
 
 # Create prediction buttons
 prediction_buttons = []
-for i in range(6):  # Assuming you want 6 prediction buttons
+for i in range(NUM_PREDICTION_BTNS):
     button = ctk.CTkButton(prediction_frame, text="", font=("Times", prediction_button_font_size), fg_color='#34495e', text_color='white', width=prediction_button_width, height=prediction_button_height, corner_radius=10)
     button.pack(side="left", padx=prediction_button_padx, pady=prediction_button_pady)
     prediction_buttons.append(button)
-
-# Update predictions initially with empty text
-update_predictions("")
 
 # Frame for keyboard buttons
 keyboard_frame = Frame(root, bg='#2c3e50')
