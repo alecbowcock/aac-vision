@@ -26,7 +26,6 @@ def decode(tokenizer, pred_idx, top_clean):
 def encode(tokenizer, text_sentence, add_special_tokens=True):
     text_sentence = text_sentence.replace('<mask>', tokenizer.mask_token)
     # if <mask> is the last token, append a "." so that models dont predict punctuation.
-    # adding ' .' changes predictions; try "what a"
     if tokenizer.mask_token == text_sentence.split()[-1]:
         text_sentence += ' .'
 
@@ -72,11 +71,11 @@ def on_key_press(char):
     typed_text.configure(text=current_text)
 
     if char == "space":
-        predictions = get_model_predictions(current_text)
+        predictions = get_model_predictions(current_text.lower())
         print("Predictions:", '\n'.join(predictions))  # Add this line to check predictions
         for i, prediction in enumerate(predictions):
             if i < len(prediction_buttons):
-                prediction_buttons[i].configure(text = prediction)
+                prediction_buttons[i].configure(text = prediction.upper())
             else:
                 break
 
